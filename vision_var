@@ -1,0 +1,41 @@
+import cv2
+
+# 1. Cargamos el archivo de vídeo (cambia el nombre si el tuyo se llama distinto)
+ruta_video = 'partido.mp4'
+cap = cv2.VideoCapture(ruta_video)
+
+if not cap.isOpened():
+    print("Error: No se pudo abrir el vídeo. Comprueba que el nombre es correcto.")
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    
+    if not ret:
+        print("Fin del vídeo.")
+        break
+        
+    # --- AQUÍ EMPIEZA LA MAGIA DE LA VISIÓN POR COMPUTADOR ---
+    
+    # Paso A: Convertir la imagen a blanco y negro (escala de grises)
+    # Canny funciona mucho mejor y más rápido si le quitamos el color
+    frame_gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # Paso B: Aplicar un pequeño desenfoque (Blur) para quitar el ruido del césped
+    # Igual que hiciste en tu experimento de la Práctica 1
+    frame_desenfocado = cv2.GaussianBlur(frame_gris, (5, 5), 0)
+    
+    # Paso C: Aplicar el algoritmo de Canny con tus umbrales óptimos (50 y 150)
+    bordes = cv2.Canny(frame_desenfocado, 50, 150)
+    
+    # --- FIN DE LA MAGIA ---
+    
+    # Mostramos dos ventanas: el vídeo original y lo que "ve" la IA (los bordes)
+    cv2.imshow('Video Original', frame)
+    cv2.imshow('Vision IA (Canny)', bordes)
+    
+    # Esperamos 25 milisegundos y si pulsamos la tecla 'q', cerramos todo
+    if cv2.waitKey(25) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()

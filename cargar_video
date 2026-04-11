@@ -1,0 +1,35 @@
+import cv2
+
+# 1. Cargamos el archivo de vídeo
+ruta_video = 'partido.mp4'
+cap = cv2.VideoCapture(ruta_video)
+
+# Comprobamos si el vídeo se ha abierto correctamente
+if not cap.isOpened():
+    print("Error: No se pudo abrir el vídeo.")
+
+# 2. Bucle para leer el vídeo fotograma a fotograma
+while cap.isOpened():
+    # ret es un booleano que devuelve True si el frame se ha leído bien
+    # frame es la matriz de NumPy con la imagen (¡lo que usamos en la Práctica 1!)
+    ret, frame = cap.read()
+    
+    # Si ya no hay más fotogramas (terminó el vídeo), salimos del bucle
+    if not ret:
+        print("Fin del vídeo.")
+        break
+        
+    # Aquí es donde, más adelante, aplicaremos los filtros de la Sesión 6
+    # (por ejemplo, convertir a blanco y negro, calcular flujo óptico, etc.)
+    # frame_procesado = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # 3. Mostramos el fotograma en una ventana
+    cv2.imshow('Ojo de Halcon / Tipster AI', frame)
+    
+    # 4. Esperamos 25 milisegundos y si pulsamos la tecla 'q', cerramos todo
+    if cv2.waitKey(25) & 0xFF == ord('q'):
+        break
+
+# 5. Liberamos la memoria y cerramos las ventanas
+cap.release()
+cv2.destroyAllWindows()
