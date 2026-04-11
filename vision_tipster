@@ -1,51 +1,50 @@
 from ultralytics import YOLO
 import cv2
 import numpy as np
+import csv  
 
-# 1. Cargamos el modelo neuronal 
-# Usamos 'yolov8n.pt' (versión nano) 
+# 1. Cargamos el modelo neuronal
 print("Cargando la Red Neuronal YOLO...")
 modelo_yolo = YOLO('yolov8n.pt')
 print("¡Red Neuronal lista!")
 
-# 2. Cargamos tu vídeo
+# 2. Cargamos vídeo
 ruta_video = 'partido.mp4'
 cap = cv2.VideoCapture(ruta_video)
 
 if not cap.isOpened():
     print("Error: No se pudo abrir el vídeo. Revisa el nombre.")
 
+# --- VARIABLES PARA LA MEMORIA DEL TIPSTER ---
+historial_decisiones = []
+numero_frame = 0
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
         
+    # Contamos por qué frame vamos para calcular los segundos
+    numero_frame += 1 
+    
     contador_barca = 0
     contador_madrid = 0
     
     # --- PASO 1: LA RED NEURONAL BUSCA HUMANOS ---
-    # classes=[0] significa que SOLO busque la clase 0 (Persona). Ignora todo lo demás.
-    # conf=0.3 significa que solo dibuje cajas si está más de un 30% seguro de que es humano.
     resultados = modelo_yolo(frame, classes=[0], conf=0.3, verbose=False)
-    
     cajas = resultados[0].boxes
     
     # --- PASO 2: ANALIZAMOS A CADA PERSONA ENCONTRADA ---
     for caja in cajas:
-        # Extraemos las coordenadas de la caja de YOLO
         x1, y1, x2, y2 = map(int, caja.xyxy[0])
-        
-        # "Recortamos" la imagen: nos quedamos SOLO con los píxeles de dentro de la caja
         recorte_jugador = frame[y1:y2, x1:x2]
         
-        # Medida de seguridad por si el jugador está saliendo de la pantalla
         if recorte_jugador.size == 0:
             continue
             
-        # --- PASO 3:  COLORES 
+        # --- PASO 3:  COLORES ---
         hsv_jugador = cv2.cvtColor(recorte_jugador, cv2.COLOR_BGR2HSV)
         
-        # Rangos de color en HSV para detectar el blanco del Madrid y el azul/rojo del Barça
         madrid_bajo = np.array([0, 0, 180])   
         madrid_alto = np.array([180, 50, 255]) 
         azul_bajo = np.array([90, 80, 50])  
@@ -55,7 +54,6 @@ while cap.isOpened():
         rojo_bajo2 = np.array([160, 80, 50]) 
         rojo_alto2 = np.array([180, 255, 255])
         
-        # Creamos las máscaras pero SOLO para el trocito del jugador
         mask_madrid = cv2.inRange(hsv_jugador, madrid_bajo, madrid_alto)
         mask_azul = cv2.inRange(hsv_jugador, azul_bajo, azul_alto)
         mask_rojo1 = cv2.inRange(hsv_jugador, rojo_bajo1, rojo_alto1)
@@ -63,11 +61,9 @@ while cap.isOpened():
         mask_barca = cv2.bitwise_or(mask_azul, cv2.bitwise_or(mask_rojo1, mask_rojo2))
         
         # --- PASO 4: DECISIÓN DE EQUIPO ---
-        # Contamos cuántos píxeles de color hay dentro de la ropa del jugador
         pixeles_madrid = cv2.countNonZero(mask_madrid)
         pixeles_barca = cv2.countNonZero(mask_barca)
         
-        # Gana el color que tenga más píxeles (ponemos un mínimo de 20 para no confundir al árbitro)
         if pixeles_madrid > pixeles_barca and pixeles_madrid > 20:
             contador_madrid += 1
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
@@ -79,13 +75,48 @@ while cap.isOpened():
             cv2.putText(frame, "Barca", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
     # --- PASO 5: LA INTERFAZ FINAL ---
+    # Marcadores movidos un poco más abajo (150 y 190) para que no pisen el texto del vídeo
     cv2.putText(frame, f"Atacantes Barca: {contador_barca}", (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
     cv2.putText(frame, f"Defensas Madrid: {contador_madrid}", (20, 190), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
 
+    # --- PASO 6: EL CEREBRO DEL TIPSTER (Agente de Decisión) ---
+    mensaje_tipster = "Analizando patron de juego..."
+    color_alerta = (255, 255, 0) 
+    
+    if contador_barca > contador_madrid:
+        mensaje_tipster = "ALERTA TIPSTER: Superioridad ofensiva -> APOSTAR AL GOL"
+        color_alerta = (0, 255, 0) 
+    elif contador_madrid >= (contador_barca + 2):
+        mensaje_tipster = "ALERTA TIPSTER: Defensa bloqueada -> ESPERAR CUOTAS"
+        color_alerta = (0, 165, 255) 
+    elif contador_barca == contador_madrid and contador_barca > 0:
+        mensaje_tipster = "ALERTA TIPSTER: Transicion -> MANTENER RIESGO"
+        color_alerta = (0, 255, 255) 
+
+    cv2.putText(frame, mensaje_tipster, (20, frame.shape[0] - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color_alerta, 3)
+
+    # --- PASO 7: GUARDAR EN MEMORIA (1 vez por segundo, aprox cada 30 frames) ---
+    if numero_frame % 30 == 0:
+        tiempo_segundos = numero_frame // 30
+        # Guardamos el minuto, los contadores y la decisión de ese instante
+        historial_decisiones.append([f"Minuto {tiempo_segundos//60}:{tiempo_segundos%60:02d}", contador_barca, contador_madrid, mensaje_tipster])
+
+    # Mostrar imagen
     cv2.imshow('Smart Tipster AI - Version YOLO', frame) 
     
     if cv2.waitKey(25) & 0xFF == ord('q'):
         break
 
+# --- PASO 8: CIERRE Y EXPORTACIÓN DEL EXCEL ---
 cap.release()
 cv2.destroyAllWindows()
+
+# Solo se ejecuta cuando cierras la ventana del vídeo (pulsando la 'q')
+print("\nGenerando informe de decisiones...")
+with open('historial_tipster.csv', mode='w', newline='', encoding='utf-8') as archivo_csv:
+    escritor = csv.writer(archivo_csv)
+    # Escribimos las cabeceras de las columnas
+    escritor.writerow(["Tiempo", "Atacantes Barca", "Defensas Madrid", "Decision IA"])
+    # Escribimos todas las filas que hemos ido guardando
+    escritor.writerows(historial_decisiones)
+print("¡Informe 'historial_tipster.csv' creado con éxito en tu carpeta!")
