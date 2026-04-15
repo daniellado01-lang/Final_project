@@ -1,0 +1,60 @@
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+import numpy as np
+
+print("Iniciando Módulo de Procesamiento de Lenguaje Natural (NLP)...\n")
+
+# --- FASE 1: ENTRENAMIENTO (Bases de datos históricas) ---
+# Le enseñamos a la IA ejemplos de cosas buenas y malas para que aprenda el contexto
+titulares_entrenamiento = [
+    "El equipo está jugando de maravilla, gran momento de forma",
+    "Lesión grave del delantero estrella, no jugará hoy",
+    "La afición está muy motivada y llena el estadio para animar",
+    "Crisis en el vestuario, el entrenador podría ser despedido por malos resultados",
+    "Victoria aplastante en el último partido, máxima confianza",
+    "Mala racha, tercer partido consecutivo perdiendo, dudas en la defensa",
+    "El jugador clave vuelve tras recuperarse a tiempo",
+    "Problemas económicos en el club, no hay dinero para fichajes"
+]
+
+# Etiquetas de los titulares: 1 = Positivo (Buen contexto), 0 = Negativo (Mal contexto/Peligro)
+etiquetas_entrenamiento = [1, 0, 1, 0, 1, 0, 1, 0]
+
+# --- FASE 2: TRADUCCIÓN A MATEMÁTICAS ---
+# La IA no entiende palabras, así que las convertimos en una matriz de números
+vectorizador = CountVectorizer()
+matriz_entrenamiento = vectorizador.fit_transform(titulares_entrenamiento)
+
+# --- FASE 3: EL CEREBRO NAIVE BAYES ---
+print("Entrenando red neuronal de texto (Algoritmo Naive Bayes)...")
+modelo_nlp = MultinomialNB()
+modelo_nlp.fit(matriz_entrenamiento, etiquetas_entrenamiento)
+print("¡Cerebro lingüístico entrenado con éxito!\n")
+print("-" * 50)
+
+# --- FASE 4: EL AGENTE EN ACCIÓN (SIMULACIÓN EN DIRECTO) ---
+# Aquí simulamos que la IA acaba de leer en Twitter estas dos noticias de última hora:
+noticias_ultima_hora = [
+    "El portero titular se ha lesionado en el calentamiento y no puede jugar",
+    "El equipo sale a morder, tienen mucha confianza para ganar el derbi de hoy"
+]
+
+print("ANALIZANDO CONTEXTO EN DIRECTO (SCAPING DE NOTICIAS):")
+matriz_nuevas = vectorizador.transform(noticias_ultima_hora)
+
+# El modelo predice si es positivo o negativo, y nos da su % de seguridad
+predicciones = modelo_nlp.predict(matriz_nuevas)
+probabilidades = modelo_nlp.predict_proba(matriz_nuevas)
+
+# Imprimimos los resultados como un sistema financiero
+for i in range(len(noticias_ultima_hora)):
+    texto = noticias_ultima_hora[i]
+    resultado_texto = "🟢 IMPACTO POSITIVO (Sube Cuota)" if predicciones[i] == 1 else "🔴 IMPACTO NEGATIVO (Baja Cuota/Riesgo)"
+    confianza = max(probabilidades[i]) * 100
+    
+    print(f"\n[ALERTA RADAR]: '{texto}'")
+    print(f"[DECISIÓN IA] : {resultado_texto}")
+    print(f"[CONFIANZA]   : {confianza:.1f}%")
+
+print("\n" + "-" * 50)
+print("Análisis de contexto finalizado. Volcando datos al Smart Tipster...")

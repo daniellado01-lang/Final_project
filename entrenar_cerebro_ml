@@ -1,0 +1,54 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+import warnings
+warnings.filterwarnings('ignore') # Ocultar avisos innecesarios
+
+print("=== INICIANDO MÓDULO DE APRENDIZAJE AUTOMÁTICO AVANZADO ===")
+
+# 1. CARGAMOS TUS DATOS DEL EXCEL
+print("1. Leyendo el Track Record (historial_tipster.csv)...")
+try:
+    datos = pd.read_csv('historial_tipster.csv')
+except FileNotFoundError:
+    print("ERROR: No encuentro el archivo CSV. Asegúrate de haberlo generado primero.")
+    exit()
+
+# 2. PREPARAMOS LOS DATOS (Features y Target)
+# X = Lo que la IA mira (Atacantes y Defensas)
+X = datos[['Atacantes Barca', 'Defensas Madrid']]
+
+# Y = Lo que la IA tiene que aprender a predecir (La decisión)
+Y = datos['Decision IA']
+
+# Dividimos los datos: 80% para estudiar, 20% para hacerle un examen a la IA
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+
+# 3. ENTRENAMOS EL MODELO AVANZADO (Random Forest)
+print("2. Entrenando el modelo RandomForest (Bosques Aleatorios)...")
+modelo_rf = RandomForestClassifier(n_estimators=100, random_state=42)
+modelo_rf.fit(X_train, y_train)
+
+# 4. EXAMINAMOS A LA IA
+print("3. Evaluando la precisión del modelo...")
+predicciones = modelo_rf.predict(X_test)
+precision = accuracy_score(y_test, predicciones)
+
+print(f"\n Precisión de la IA: {precision * 100:.2f}%")
+print("-" * 50)
+
+# 5. DEMOSTRACIÓN PRÁCTICA DE PREDICCIÓN
+print("Metiendo datos nuevos e inventados para ver qué decide:")
+situaciones_nuevas = pd.DataFrame({
+    'Atacantes Barca': [2, 8, 5],
+    'Defensas Madrid': [8, 3, 5]
+})
+
+predicciones_nuevas = modelo_rf.predict(situaciones_nuevas)
+
+print("\n--- RESULTADOS DEL SIMULADOR ---")
+print(f"Situación A (2 Atacantes vs 8 Defensas) -> {predicciones_nuevas[0]}")
+print(f"Situación B (8 Atacantes vs 3 Defensas) -> {predicciones_nuevas[1]}")
+print(f"Situación C (5 Atacantes vs 5 Defensas) -> {predicciones_nuevas[2]}")
+print("\n¡El Cerebro Predictivo está listo para ser integrado!")
