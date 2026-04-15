@@ -60,19 +60,31 @@ while cap.isOpened():
         mask_rojo2 = cv2.inRange(hsv_jugador, rojo_bajo2, rojo_alto2)
         mask_barca = cv2.bitwise_or(mask_azul, cv2.bitwise_or(mask_rojo1, mask_rojo2))
         
-        # --- PASO 4: DECISIÓN DE EQUIPO ---
+     # --- PASO 4: DECISIÓN DE EQUIPO (Mejorado con Parche para Especiales) ---
+        # Contamos cuántos píxeles de color hay dentro de la ropa del jugador
         pixeles_madrid = cv2.countNonZero(mask_madrid)
         pixeles_barca = cv2.countNonZero(mask_barca)
         
-        if pixeles_madrid > pixeles_barca and pixeles_madrid > 20:
+        # Umbral mínimo de píxeles para considerar que un color es dominante
+        umbral_minimo_equipo = 20
+        total_pixeles_equipo = pixeles_madrid + pixeles_barca
+
+        # Lógica para Madrid/Barça
+        if pixeles_madrid > pixeles_barca and pixeles_madrid > umbral_minimo_equipo:
             contador_madrid += 1
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
-            cv2.putText(frame, "Madrid", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.putText(frame, f"Madrid", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
             
-        elif pixeles_barca > pixeles_madrid and pixeles_barca > 20:
+        elif pixeles_barca > pixeles_madrid and pixeles_barca > umbral_minimo_equipo:
             contador_barca += 1
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            cv2.putText(frame, "Barca", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.putText(frame, f"Barca", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+       
+        elif total_pixeles_equipo < umbral_minimo_equipo:
+          
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 1) 
+            cv2.putText(frame, "Especial (Arb/Por?)", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
 
     # --- PASO 5: LA INTERFAZ FINAL ---
     # Marcadores movidos un poco más abajo (150 y 190) para que no pisen el texto del vídeo
