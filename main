@@ -16,220 +16,294 @@ import pygame
 from moviepy import VideoFileClip
 from vosk import Model, KaldiRecognizer
 import warnings
+
+# LIBRERÍAS DE INTERFAZ GRÁFICA 
+import customtkinter as ctk
+from PIL import Image, ImageTk
+
 warnings.filterwarnings('ignore')
 
-print("=== INICIANDO SISTEMA MULTIMODAL (TRANSCRIPCIÓN DEL VÍDEO EN DIRECTO) ===")
+# Configuración del tema visual oscuro y moderno
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+print("=== INICIANDO SMART TIPSTER AI - TERMINAL PROFESIONAL ===")
 
 ruta_actual = os.path.dirname(os.path.abspath(__file__))
 ruta_video = os.path.join(ruta_actual, 'partido.mp4')
 ruta_audio_vosk = os.path.join(ruta_actual, 'audio_vosk.wav')
 
-# --- 0. PREPARACIÓN DEL AUDIO PARA LA IA ---
+# Variables Globales para conectar el Motor con la Interfaz
+subtitulos_en_vivo = "Inicializando micrófono..."
+decision_final = "ESPERANDO DATOS..."
+color_decision = "green"
+contador_barca = 0
+contador_madrid = 0
+zona_actual = "DESCONOCIDA"
+frame_actual_rgb = None
+app_corriendo = True
+
+# 1. PREPARACIÓN DEL AUDIO PARA LA IA 
 if not os.path.exists(ruta_audio_vosk):
-    print("0. Preparando pista de audio para la IA (Convirtiendo a 16kHz Mono)...")
+    print("Preparando pista de audio para la IA...")
     try:
         clip = VideoFileClip(ruta_video)
-        # Vosk NECESITA estrictamente que el audio sea Mono y a 16000Hz
         clip.audio.write_audiofile(ruta_audio_vosk, fps=16000, nbytes=2, codec='pcm_s16le', ffmpeg_params=["-ac", "1"], logger=None)
         clip.close()
     except Exception as e:
         print(f"ERROR al extraer audio: {e}")
         exit()
 
-# --- 1. CONFIGURACIÓN DEL HILO DE AUDIO (VOSK) ---
-print("1. Cargando Cerebro Auditivo (Vosk Offline)...")
+# 2. HILO DE AUDIO (VOSK) 
+print("Cargando Cerebro Auditivo (Vosk Offline)...")
 ruta_modelo_voz = os.path.join(ruta_actual, "modelo_voz_es")
-if not os.path.exists(ruta_modelo_voz):
-    print("ERROR FATAL: No encuentro la carpeta del modelo de voz 'modelo_voz_es'")
-    exit()
-
 modelo_vosk = Model(ruta_modelo_voz)
-subtitulos_en_vivo = "Escuchando comentarista..." 
 
 def hilo_escucha_virtual():
-    """Hilo Fantasma: Lee el archivo .wav a la misma velocidad que el vídeo"""
-    global subtitulos_en_vivo
+    global subtitulos_en_vivo, app_corriendo
     wf = wave.open(ruta_audio_vosk, "rb")
     reconocedor = KaldiRecognizer(modelo_vosk, wf.getframerate())
     
-    # Esperamos a que el reproductor de música de pygame arranque
     while not pygame.mixer.get_init() or not pygame.mixer.music.get_busy():
+        if not app_corriendo: return
         time.sleep(0.1)
         
-    while pygame.mixer.music.get_busy():
-        # Preguntamos al reloj por dónde va el audio que suena por el altavoz
+    while pygame.mixer.music.get_busy() and app_corriendo:
         tiempo_actual_ms = pygame.mixer.music.get_pos()
-        if tiempo_actual_ms < 0:
-            continue
+        if tiempo_actual_ms < 0: continue
             
-        # Calculamos cuántos frames del archivo debería haber escuchado la IA a estas alturas
         posicion_actual_frames = wf.tell()
         frame_objetivo = int((tiempo_actual_ms / 1000.0) * wf.getframerate())
         frames_a_leer = frame_objetivo - posicion_actual_frames
         
-        # Si el audio avanza, le pasamos ese trocito nuevo a Vosk
         if frames_a_leer > 0:
             data = wf.readframes(frames_a_leer)
             if len(data) == 0: break
             
             if reconocedor.AcceptWaveform(data):
-                # Frase terminada
                 resultado = json.loads(reconocedor.Result())
                 texto = resultado.get("text", "")
                 if texto: subtitulos_en_vivo = texto
             else:
-                # Frase a medias (tiempo real)
                 parcial = json.loads(reconocedor.PartialResult())
                 texto_parcial = parcial.get("partial", "")
                 if texto_parcial:
                     palabras = texto_parcial.split()
-                    subtitulos_en_vivo = " ".join(palabras[-8:]) # Mostramos las ultimas 8 palabras
+                    subtitulos_en_vivo = " ".join(palabras[-8:])
         else:
             time.sleep(0.05)
 
-# Arrancamos el Hilo Fantasma
-hilo_audio = threading.Thread(target=hilo_escucha_virtual, daemon=True)
-hilo_audio.start()
-
-# --- 2. CONFIGURACIÓN DE VISIÓN E IA ---
-print("2. Cargando Visión (YOLOv8) e IA (Random Forest)...")
-modelo_yolo = YOLO('yolov8n.pt')
-try:
+# 3. HILO PRINCIPAL DEL MOTOR DE IA (VISIÓN Y ML)
+def motor_ia_principal():
+    global frame_actual_rgb, contador_barca, contador_madrid, zona_actual, decision_final, color_decision, app_corriendo
+    
+    print("Cargando Visión (YOLOv8) e IA (Random Forest)...")
+    modelo_yolo = YOLO('yolov8n.pt')
     cerebro_ml = joblib.load(os.path.join(ruta_actual, 'cerebro_tipster.pkl'))
-except:
-    print("ERROR: No encuentro cerebro_tipster.pkl")
-    exit()
-
-# --- 3. BUCLE PRINCIPAL DE VÍDEO ---
-cap = cv2.VideoCapture(ruta_video)
-fps_video = cap.get(cv2.CAP_PROP_FPS) or 25.0 
-
-print("¡SISTEMA LISTO! Escuchando al comentarista del partido...")
-
-# Arrancamos el reproductor de sonido
-pygame.mixer.init()
-pygame.mixer.music.load(ruta_audio_vosk)
-pygame.mixer.music.play()
-
-tiempo_inicio = time.time()
-frames_leidos = 0
-
-while cap.isOpened() and pygame.mixer.music.get_busy():
-    tiempo_video_actual = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-    tiempo_audio_actual = pygame.mixer.music.get_pos() / 1000.0
-
-    # Motor de Sincronización
-    if tiempo_video_actual > tiempo_audio_actual:
-        espera = tiempo_video_actual - tiempo_audio_actual
-        if espera > 0: time.sleep(espera)
-    elif tiempo_audio_actual - tiempo_video_actual > 0.05: 
-        ret, _ = cap.read()
-        continue
-
-    ret, frame = cap.read()
-    if not ret: break 
     
-    frame = cv2.resize(frame, (1280, 720))
-    alto_frame, ancho_frame = frame.shape[:2]
+    cap = cv2.VideoCapture(ruta_video)
+    fps_video = cap.get(cv2.CAP_PROP_FPS) or 25.0 
+
+    pygame.mixer.init()
+    pygame.mixer.music.load(ruta_audio_vosk)
+    pygame.mixer.music.play()
+
+    tiempo_inicio = time.time()
     
-    contador_barca = 0
-    contador_madrid = 0
-    suma_coordenadas_x = 0
-    total_jugadores_detectados = 0
-    
-    # --- LA VISTA ---
-    resultados = modelo_yolo(frame, classes=[0], conf=0.3, verbose=False)
-    for caja in resultados[0].boxes:
-        x1, y1, x2, y2 = map(int, caja.xyxy[0])
-        recorte = frame[y1:y2, x1:x2]
-        if recorte.size == 0: continue
-            
-        centro_x = (x1 + x2) / 2
-        suma_coordenadas_x += centro_x
-        total_jugadores_detectados += 1
-            
-        hsv = cv2.cvtColor(recorte, cv2.COLOR_BGR2HSV)
-        mask_madrid = cv2.inRange(hsv, np.array([0, 0, 180]), np.array([180, 50, 255]))
-        mask_barca = cv2.bitwise_or(
-            cv2.inRange(hsv, np.array([90, 80, 50]), np.array([130, 255, 255])),
-            cv2.bitwise_or(cv2.inRange(hsv, np.array([0, 80, 50]), np.array([10, 255, 255])),
-                           cv2.inRange(hsv, np.array([160, 80, 50]), np.array([180, 255, 255])))
-        )
+    while cap.isOpened() and pygame.mixer.music.get_busy() and app_corriendo:
+        tiempo_video_actual = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+        tiempo_audio_actual = pygame.mixer.music.get_pos() / 1000.0
+
+        if tiempo_video_actual > tiempo_audio_actual:
+            espera = tiempo_video_actual - tiempo_audio_actual
+            if espera > 0: time.sleep(espera)
+        elif tiempo_audio_actual - tiempo_video_actual > 0.05: 
+            ret, _ = cap.read()
+            continue
+
+        ret, frame = cap.read()
+        if not ret: break 
         
-        pixeles_madrid = cv2.countNonZero(mask_madrid)
-        pixeles_barca = cv2.countNonZero(mask_barca)
+        frame = cv2.resize(frame, (800, 450)) # Tamaño ajustado para la UI
+        alto_frame, ancho_frame = frame.shape[:2]
         
-        if pixeles_madrid > pixeles_barca and pixeles_madrid > 20:
-            contador_madrid += 1
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
-        elif pixeles_barca > pixeles_madrid and pixeles_barca > 20:
-            contador_barca += 1
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        else:
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 1)
-
-    # --- ANÁLISIS ESPACIAL ---
-    zona_actual = "MEDIO CAMPO"
-    if total_jugadores_detectados > 0:
-        centro_gravedad_juego = suma_coordenadas_x / total_jugadores_detectados
-        tercio = ancho_frame / 3
-        if centro_gravedad_juego < tercio: zona_actual = "ZONA IZQUIERDA"
-        elif centro_gravedad_juego > (2 * tercio): zona_actual = "ZONA DERECHA"
-
-    # --- EL CEREBRO ---
-    datos_entrada = pd.DataFrame([[contador_barca, contador_madrid]], columns=['Atacantes Barca', 'Defensas Madrid'])
-    prediccion_raw = cerebro_ml.predict(datos_entrada)[0]
-    
-    decision_ml = "MANTENER"
-    color_ml = (0, 255, 255)
-    
-    if "APOSTAR" in prediccion_raw:
-        decision_ml = "APUESTA AL GOL"
-        color_ml = (0, 255, 0)
-    elif "ESPERAR" in prediccion_raw:
-        decision_ml = "ESPERAR (Riesgo Numerico)"
-        color_ml = (0, 165, 255)
-
-    if decision_ml == "APUESTA AL GOL" and zona_actual == "MEDIO CAMPO":
-        decision_ml = "ESPERAR (Accion Medio Campo)"
-        color_ml = (0, 165, 255) 
-
-    # --- LA FUSIÓN MULTIMODAL ---
-    decision_final = decision_ml
-    color_final = color_ml
-    
-    # Leemos la variable que la IA VOSK está escribiendo al escuchar el partido
-    texto_comentarista = subtitulos_en_vivo.lower()
-    
-    palabras_alerta = ["gol", "peligro", "área", "castigar", "solo", "disparo", "atención"]
-    if any(p in texto_comentarista for p in palabras_alerta):
-        if decision_ml == "APUESTA AL GOL":
-            decision_final = "MULTIMODAL: APUESTA SEGURA (100%)"
-            color_final = (255, 0, 255) 
-        else:
-            decision_final = "ALERTA AUDIO: POSIBLE PELIGRO"
-            color_final = (255, 0, 255) 
+        cont_b = 0
+        cont_m = 0
+        suma_coordenadas_x = 0
+        total_jugadores = 0
+        
+        resultados = modelo_yolo(frame, classes=[0], conf=0.3, verbose=False)
+        for caja in resultados[0].boxes:
+            x1, y1, x2, y2 = map(int, caja.xyxy[0])
+            recorte = frame[y1:y2, x1:x2]
+            if recorte.size == 0: continue
+                
+            centro_x = (x1 + x2) / 2
+            suma_coordenadas_x += centro_x
+            total_jugadores += 1
+                
+            hsv = cv2.cvtColor(recorte, cv2.COLOR_BGR2HSV)
+            mask_madrid = cv2.inRange(hsv, np.array([0, 0, 180]), np.array([180, 50, 255]))
+            mask_barca = cv2.bitwise_or(
+                cv2.inRange(hsv, np.array([90, 80, 50]), np.array([130, 255, 255])),
+                cv2.bitwise_or(cv2.inRange(hsv, np.array([0, 80, 50]), np.array([10, 255, 255])),
+                               cv2.inRange(hsv, np.array([160, 80, 50]), np.array([180, 255, 255])))
+            )
             
-    # --- INTERFAZ GRÁFICA ---
-    cv2.line(frame, (int(ancho_frame/3), 0), (int(ancho_frame/3), alto_frame), (255, 255, 255), 1)
-    cv2.line(frame, (int(2*ancho_frame/3), 0), (int(2*ancho_frame/3), alto_frame), (255, 255, 255), 1)
-    
-    cv2.rectangle(frame, (0, 0), (550, 150), (0,0,0), -1)
-    cv2.putText(frame, f"Atacantes Barca: {contador_barca}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-    cv2.putText(frame, f"Defensas Madrid: {contador_madrid}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    cv2.putText(frame, f"ZONA DE ACCION: {zona_actual}", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-    
-    cv2.rectangle(frame, (0, alto_frame - 80), (ancho_frame, alto_frame), (0,0,0), -1) 
-    cv2.putText(frame, f"AUDIO: '{texto_comentarista}'", (20, alto_frame - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
-    cv2.putText(frame, f"IA: {decision_final}", (20, alto_frame - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color_final, 3)
+            pixeles_madrid = cv2.countNonZero(mask_madrid)
+            pixeles_barca = cv2.countNonZero(mask_barca)
+            
+            if pixeles_madrid > pixeles_barca and pixeles_madrid > 20:
+                cont_m += 1
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
+            elif pixeles_barca > pixeles_madrid and pixeles_barca > 20:
+                cont_b += 1
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-    cv2.imshow('Smart Tipster AI - LIVE MULTIMODAL', frame) 
-    
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        zona = "MEDIO CAMPO"
+        if total_jugadores > 0:
+            centro_juego = suma_coordenadas_x / total_jugadores
+            if centro_juego < (ancho_frame / 3): zona = "ZONA IZQUIERDA"
+            elif centro_juego > (2 * ancho_frame / 3): zona = "ZONA DERECHA"
 
-pygame.mixer.music.stop()
-pygame.quit()
-cap.release()
-cv2.destroyAllWindows()
-print("Demostración finalizada.")
+        datos_entrada = pd.DataFrame([[cont_b, cont_m]], columns=['Atacantes Barca', 'Defensas Madrid'])
+        prediccion_raw = cerebro_ml.predict(datos_entrada)[0]
+        
+        dec_ml = "MANTENER"
+        col_ml = "gray"
+        
+        if "APOSTAR" in prediccion_raw:
+            dec_ml = "APUESTA AL GOL"
+            col_ml = "#10b981"
+        elif "ESPERAR" in prediccion_raw:
+            dec_ml = "ESPERAR (Riesgo Numérico)"
+            col_ml = "#f59e0b" 
+
+        if dec_ml == "APUESTA AL GOL" and zona == "MEDIO CAMPO":
+            dec_ml = "ESPERAR (Medio Campo)"
+            col_ml = "#f59e0b"
+
+        texto_comentarista = subtitulos_en_vivo.lower()
+        palabras_alerta = ["gol", "peligro", "área", "castigar", "solo", "disparo", "atención", "centro", "roja", "remate", "tiro", "messi"]
+        
+        if any(p in texto_comentarista for p in palabras_alerta):
+            if dec_ml == "APUESTA AL GOL":
+                dec_ml = "CONFIRMACIÓN MULTIMODAL"
+                col_ml = "#d946ef" 
+            else:
+                dec_ml = "ALERTA: POSIBLE PELIGRO"
+                col_ml = "#d946ef"
+
+        # Actualizar variables globales para la GUI
+        contador_barca = cont_b
+        contador_madrid = cont_m
+        zona_actual = zona
+        decision_final = dec_ml
+        color_decision = col_ml
+        
+        # Convertir frame de OpenCV (BGR) a formato de interfaz gráfica (RGB)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_actual_rgb = frame_rgb
+
+    # Al terminar
+    pygame.mixer.music.stop()
+    pygame.quit()
+    cap.release()
+    app_corriendo = False
+
+#  4. CLASE DE LA INTERFAZ GRÁFICA (GUI)
+class SmartTipsterGUI(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Smart Tipster AI - Terminal")
+        # 1. ventana un poco más ancha 
+        self.geometry("1280x650") 
+        self.protocol("WM_DELETE_WINDOW", self.cerrar_app)
+
+        self.grid_columnconfigure(0, weight=1) 
+        self.grid_columnconfigure(1, weight=0, minsize=400) 
+
+        # PANEL IZQUIERDO (PARTIDO)
+        self.panel_video = ctk.CTkFrame(self, corner_radius=15)
+        self.panel_video.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        
+        self.label_titulo_video = ctk.CTkLabel(self.panel_video, text="SEÑAL EN DIRECTO - ANÁLISIS YOLOv8", font=ctk.CTkFont(size=18, weight="bold"))
+        self.label_titulo_video.pack(pady=10)
+        
+        self.label_video = ctk.CTkLabel(self.panel_video, text="")
+        self.label_video.pack(expand=True)
+
+        # PANEL DERECHO (APUESTA)
+        self.panel_datos = ctk.CTkFrame(self, corner_radius=15, fg_color="#1e293b", width=400)
+        self.panel_datos.grid(row=0, column=1, padx=(0, 20), pady=20, sticky="nsew")
+        
+        self.label_titulo_datos = ctk.CTkLabel(self.panel_datos, text="FUSIÓN MULTIMODAL", font=ctk.CTkFont(size=22, weight="bold"))
+        self.label_titulo_datos.pack(pady=20)
+
+        # Marcadores
+        self.label_fcb = ctk.CTkLabel(self.panel_datos, text="Jugadores FCB: 0", font=ctk.CTkFont(size=18), text_color="#ef4444")
+        self.label_fcb.pack(pady=5)
+        self.label_rma = ctk.CTkLabel(self.panel_datos, text="Jugadores RMA: 0", font=ctk.CTkFont(size=18), text_color="#f8fafc")
+        self.label_rma.pack(pady=5)
+        self.label_zona = ctk.CTkLabel(self.panel_datos, text="ZONA: ESPERANDO", font=ctk.CTkFont(size=16))
+        self.label_zona.pack(pady=15)
+
+        # Audio NLP 
+        self.caja_audio = ctk.CTkTextbox(self.panel_datos, width=360, height=80, corner_radius=10, fg_color="#0f172a", text_color="#38bdf8")
+        self.caja_audio.pack(padx=20, pady=10) 
+        self.caja_audio.insert("0.0", "Iniciando NLP...")
+        self.caja_audio.configure(state="disabled")
+
+        # Decisión Final
+        self.label_decision_titulo = ctk.CTkLabel(self.panel_datos, text="DECISIÓN DEL AGENTE:", font=ctk.CTkFont(size=14, weight="bold"))
+        self.label_decision_titulo.pack(pady=(30, 0))
+        
+        # Botón de Decisión 
+        self.boton_decision = ctk.CTkButton(self.panel_datos, text="CARGANDO...", font=ctk.CTkFont(size=16, weight="bold"), 
+                                            width=360, height=60, corner_radius=8, fg_color="gray", hover=False)
+        self.boton_decision.pack(padx=20, pady=10)
+
+        # Actualización de la interfaz
+        self.actualizar_gui()
+        
+
+    def actualizar_gui(self):
+        if not app_corriendo:
+            self.destroy()
+            return
+            
+        # Actualizar vídeo
+        if frame_actual_rgb is not None:
+            img = Image.fromarray(frame_actual_rgb)
+            imgtk = ctk.CTkImage(light_image=img, dark_image=img, size=(750, 420))
+            self.label_video.configure(image=imgtk)
+
+        # Actualizar Textos
+        self.label_fcb.configure(text=f"Jugadores FCB: {contador_barca}")
+        self.label_rma.configure(text=f"Jugadores RMA: {contador_madrid}")
+        self.label_zona.configure(text=f"ZONA: {zona_actual}")
+        
+        # Actualizar Audio
+        self.caja_audio.configure(state="normal")
+        self.caja_audio.delete("0.0", "end")
+        self.caja_audio.insert("0.0", f"NLP: '{subtitulos_en_vivo}'")
+        self.caja_audio.configure(state="disabled")
+
+        # Actualizar Botón de Decisión
+        self.boton_decision.configure(text=decision_final, fg_color=color_decision)
+
+        # Repetir actualización cada 30 milisegundos 
+        self.after(30, self.actualizar_gui)
+
+    def cerrar_app(self):
+        global app_corriendo
+        app_corriendo = False
+        self.destroy()
+
+# 5. ARRANQUE DEL SISTEMA 
+threading.Thread(target=hilo_escucha_virtual, daemon=True).start()
+threading.Thread(target=motor_ia_principal, daemon=True).start()
+
+# Iniciamos la Interfaz Gráfica 
+app = SmartTipsterGUI()
+app.mainloop()
