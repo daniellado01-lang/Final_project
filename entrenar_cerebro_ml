@@ -1,20 +1,19 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 import joblib
 import os
 import warnings
-warnings.filterwarnings('ignore') # Ocultar avisos innecesarios
+warnings.filterwarnings('ignore')
 
 print("=== INICIANDO MÓDULO DE APRENDIZAJE AUTOMÁTICO AVANZADO ===")
+print("Iniciando optimización de hiperparámetros (GridSearch)...")
 
-# Calculamos la ruta exacta donde está guardado este script
 ruta_actual = os.path.dirname(os.path.abspath(__file__))
 ruta_csv = os.path.join(ruta_actual, 'historial_tipster.csv')
 
-# 1. CARGAMOS TUS DATOS DEL EXCEL
-print(f"1. Leyendo el Track Record desde:\n   {ruta_csv}")
+# 1. CARGA DATOS DEL EXCEL
 try:
     datos = pd.read_csv(ruta_csv)
 except FileNotFoundError:
@@ -27,18 +26,34 @@ Y = datos['Decision IA']
 
 X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-# 3. ENTRENAMOS EL MODELO AVANZADO (Random Forest)
-print("2. Entrenando el modelo RandomForest (Bosques Aleatorios)...")
-modelo_rf = RandomForestClassifier(n_estimators=100, random_state=42)
-modelo_rf.fit(X_train, y_train)
+# 3. ENTRENAMIENTO AVANZADO (GRID SEARCH)
+parametros_grid = {
+    'n_estimators': [50, 100, 200],          # Número de "árboles" en el bosque
+    'max_depth': [None, 5, 10, 15],          # Profundidad máxima para no "sobrepensar" (evitar overfitting)
+    'min_samples_split': [2, 5, 10],         # Mínimo de ejemplos para tomar una decisión
+    'criterion': ['gini', 'entropy']         # Fórmulas matemáticas de decisión
+}
 
-# 4. EXAMINAMOS A LA IA
-predicciones = modelo_rf.predict(X_test)
+# Configuramos el buscador automático
+modelo_base = RandomForestClassifier(random_state=42)
+buscador = GridSearchCV(estimator=modelo_base, param_grid=parametros_grid, cv=5, n_jobs=-1, verbose=1)
+
+print("\nBuscando la configuración matemática perfecta (esto puede tardar unos segundos)...")
+buscador.fit(X_train, y_train)
+
+# Extraemos el mejor cerebro que ha encontrado
+mejor_modelo_rf = buscador.best_estimator_
+
+# 4. EXAMINAMOS A LA IA CON EL MEJOR MODELO
+predicciones = mejor_modelo_rf.predict(X_test)
 precision = accuracy_score(y_test, predicciones)
-print(f"\n   Precisión de la IA: {precision * 100:.2f}%")
 
-# 5. GUARDAMOS EL CEREBRO PARA USARLO EN EL VÍDEO
+print("\n" + "="*50)
+print(f" Configuración óptima encontrada: {buscador.best_params_}")
+print(f" PRECISIÓN DE LA IA: {precision * 100:.2f}%")
+print("="*50 + "\n")
+
+# 5. GUARDAMOS EL CEREBRO
 ruta_guardado = os.path.join(ruta_actual, 'cerebro_tipster.pkl')
-joblib.dump(modelo_rf, ruta_guardado)
-print(f"\n3. Cerebro guardado con éxito en:\n   {ruta_guardado}")
-print("\n¡El Cerebro Predictivo está listo para ser integrado!")
+joblib.dump(mejor_modelo_rf, ruta_guardado)
+print(f"Cerebro guardado con éxito en: {ruta_guardado}")
