@@ -51,6 +51,7 @@ precision = accuracy_score(y_test, predicciones)
 print("\n" + "="*50)
 print(f" Configuración óptima encontrada: {buscador.best_params_}")
 print(f" PRECISIÓN DE LA IA: {precision * 100:.2f}%")
+print(classification_report(y_test, predicciones))
 print("="*50 + "\n")
 
 # 5. GUARDAMOS EL CEREBRO
