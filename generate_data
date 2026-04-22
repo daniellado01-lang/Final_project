@@ -1,0 +1,29 @@
+import pandas as pd
+import random
+import os
+
+print("=== INICIANDO GENERADOR DE DATOS SINTÉTICOS ===")
+
+ruta_actual = os.path.dirname(os.path.abspath(__file__))
+ruta_csv = os.path.join(ruta_actual, 'historial_tipster.csv')
+
+historial = []
+
+for _ in range(500):
+    atacantes = random.randint(1, 11)
+    defensas = random.randint(1, 11)
+    
+    if atacantes >= defensas + 2:
+        decision = "APOSTAR"
+    elif defensas >= atacantes + 1:
+        decision = "ESPERAR"
+    else:
+        decision = "MANTENER"
+        
+    historial.append([atacantes, defensas, decision])
+
+# Lo guardamos en tu Excel
+df = pd.DataFrame(historial, columns=['Atacantes Barca', 'Defensas Madrid', 'Decision IA'])
+df.to_csv(ruta_csv, index=False)
+
+print(f" 500 jugadas simuladas en:\n{ruta_csv}")

@@ -1,0 +1,59 @@
+from moviepy import VideoFileClip
+import speech_recognition as sr
+import os
+
+print("=== INICIANDO MÓDULO DE PROCESAMIENTO DEL HABLA (Speech-to-Text) ===")
+
+# 1. Configuración de archivos
+ruta_video = 'partido.mp4'  
+ruta_audio_temp = 'audio_partido.wav'
+idioma_narration = 'es-ES' 
+
+# 2. EXTRACCIÓN DEL AUDIO DEL VÍDEO
+print(f"1. Extrayendo audio de '{ruta_video}'...")
+if not os.path.exists(ruta_video):
+    print("ERROR: No encuentro el vídeo. Revisa el nombre.")
+    exit()
+
+try:
+    video = VideoFileClip(ruta_video)
+    audio = video.audio
+    audio.write_audiofile(ruta_audio_temp, logger=None)
+    print("¡Audio extraído con éxito!")
+    video.close() 
+except Exception as e:
+    print(f"ERROR en la extracción de audio: {e}")
+    exit()
+
+# 3. RECONOCIMIENTO DE VOZ (Speech Recognition)
+print("\n2. Transcribiendo audio a texto (esto puede tardar unos minutos)...")
+reconocedor = sr.Recognizer()
+
+try:
+    with sr.AudioFile(ruta_audio_temp) as fuente:
+        audio_datos = reconocedor.record(fuente) 
+        texto_transcrito = reconocedor.recognize_google(audio_datos, language=idioma_narration)
+        print("¡Transcripción finalizada!")
+
+except sr.UnknownValueError:
+    print("ERROR: El reconocedor no pudo entender el audio. ¿Hay comentarista?")
+    texto_transcrito = ""
+except sr.RequestError as e:
+    print(f"ERROR: No se pudo conectar con Google Speech Recognition; {e}")
+    texto_transcrito = ""
+except Exception as e:
+    print(f"ERROR en el reconocimiento: {e}")
+    texto_transcrito = ""
+
+# 4. GUARDAR RESULTADOS Y LIMPIEZA
+print("\n3. Guardando transcripción...")
+ruta_texto_final = 'transcripcion_partido.txt'
+with open(ruta_texto_final, "w", encoding="utf-8") as archivo:
+    archivo.write(texto_transcrito)
+
+if os.path.exists(ruta_audio_temp):
+    os.remove(ruta_audio_temp)
+    print("Archivo de audio temporal borrado para ahorrar espacio.")
+
+print("-" * 50)
+print(f"Módulo finalizado. Archivo '{ruta_texto_final}' creado con éxito.")
